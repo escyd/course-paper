@@ -6,6 +6,7 @@ import pandas as pd
 
 from experiments import build_system, summarize_run
 
+
 OUT_DIR = "tables/"
 
 
@@ -27,6 +28,7 @@ def run_robustness_checks(steps=500, shock_iteration=200):
         {"scenario": "stress", "tau": 1.0, "beta": 0.6, "fx_cost": 0.010},
     ]
 
+    
     run_counts = [20, 50, 100]
     base_seeds = [42, 142, 242]
 
