@@ -5,3 +5,19 @@ __pycache__/
 .DS_Store
 .idea/
 .ipynb_checkpoints/
+
+# Generated experimental data
+/tables/final_experiments_v2/
+/tables/final_run_audit/
+/tables/empty_both_validation/
+/tables/fix_diagnostics/
+/tables/liquidity_validation/
+/tables/methodology_audit/
+/tables/methodology_validation/
+/tables/stylized_facts/
+/tables/stylized_facts_pilot/
+/tables/stylized_facts_v2/
+/tables/two_market_pilot/
+/tables/v2_validation/
+/tables/raw_results.csv
+/tables/summary_results.csv
