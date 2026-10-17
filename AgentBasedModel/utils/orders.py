@@ -1,3 +1,7 @@
+class EmptyOrderBookError(RuntimeError):
+    """Explicit undefined-price condition; never substitute an invented quote."""
+
+
 class Order:
     """
     Order contains all relevant information about order, it can be of two types: bid, ask. Supports binary comparison

@@ -196,6 +196,7 @@ class FXMarket(AssetMarket):
         )
 
     def convert(self, amount: float, from_currency: str, to_currency: str) -> float:
+        """Rate is quote currency per base currency (CUR_B per CUR_A)."""
         rate = self.price()
         fee = 1.0 - self.transaction_cost
 

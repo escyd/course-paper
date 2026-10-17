@@ -1,3 +1,4 @@
+from AgentBasedModel.utils.liquidity import quote_state
 from dataclasses import dataclass, field
 import random
 import statistics
@@ -12,8 +13,30 @@ class MultiSimulatorInfo:
     traded_volume_a: list = field(default_factory=list)
     traded_volume_b: list = field(default_factory=list)
     fx_volume: list = field(default_factory=list)
+    empty_books: list = field(default_factory=list)
+
+    liquid_a: list = field(default_factory=list)
+    liquid_b: list = field(default_factory=list)
+    bid_empty_a: list = field(default_factory=list)
+    ask_empty_a: list = field(default_factory=list)
+    bid_empty_b: list = field(default_factory=list)
+    ask_empty_b: list = field(default_factory=list)
+    liquid_fx: list = field(default_factory=list)
+    fallback_a: list = field(default_factory=list)
+    fallback_b: list = field(default_factory=list)
+    fallback_fx: list = field(default_factory=list)
 
     def record(self, simulator):
+        for name, market in [('a', simulator.markets['A']), ('b', simulator.markets['B']),
+                             ('fx', simulator.fx_market)]:
+            state = quote_state(market) if market is not None else dict(two_sided=True)
+            getattr(self, 'liquid_'+name).append(state['two_sided'])
+            getattr(self, 'fallback_'+name).append(market is not None and not state['two_sided']
+                                                  and market.shocked_price is None)
+            if name != 'fx':
+                getattr(self, 'bid_empty_'+name).append(state['bid_empty'])
+                getattr(self, 'ask_empty_'+name).append(state['ask_empty'])
+
         p_a = simulator.markets["A"].price()
         p_b = simulator.markets["B"].price()
         fx = simulator.fx_market.price() if simulator.fx_market is not None else 1.0
@@ -22,12 +45,16 @@ class MultiSimulatorInfo:
         self.prices_b.append(p_b)
         self.fx_rates.append(fx)
 
-        p_b_in_a = p_b * fx
+        p_b_in_a = p_b / max(fx, 1e-9)
         self.price_gap.append(abs(p_a - p_b_in_a))
 
         self.traded_volume_a.append(simulator.step_volume["A"])
         self.traded_volume_b.append(simulator.step_volume["B"])
         self.fx_volume.append(simulator.step_volume["FX"])
+        # Observation only: retain the existing fallback-price behavior but flag it.
+        self.empty_books.append(any(not book for market in
+            [*simulator.markets.values(), simulator.fx_market] if market is not None
+            for book in market.order_book.values()))
 
 
 class MultiMarketSimulator:
@@ -115,7 +142,7 @@ class MultiMarketSimulator:
         fx = self.fx_market.price()
 
         p_a = market_a.price()
-        p_b_in_a = market_b.price() * fx
+        p_b_in_a = market_b.price() / max(fx, 1e-9)
 
         diff = p_a - p_b_in_a
 
@@ -126,7 +153,7 @@ class MultiMarketSimulator:
         new_b_in_a = max(0.01, round(p_b_in_a + adjustment, 2))
 
 
-        new_b = max(0.01, round(new_b_in_a / max(fx, 1e-9), 2))
+        new_b = max(0.01, round(new_b_in_a * fx, 2))
 
         market_a.last_trade_price = new_a
         market_b.last_trade_price = new_b
