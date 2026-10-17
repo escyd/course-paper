@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "pdf_count": 13,
+  "png_count": 13,
+  "plots": 10,
+  "typeset_tables": 3,
+  "png_dpi": 300,
+  "pdf_fonts_embedded": true,
+  "visual_review": "all 13 PNG previews inspected",
+  "source_files_hash_verified": 435,
+  "protected_model_sources_unchanged": true,
+  "prior_result_files_unchanged": 4261,
+  "simulations_run": 0,
+  "commits_created": 0
+}

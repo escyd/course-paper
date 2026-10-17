@@ -12,13 +12,14 @@ plt.style.use("seaborn-v0_8")
 
 
 def clear_figures():
-    if not os.path.exists(OUT_DIR):
-        os.makedirs(OUT_DIR)
-
-    for f in os.listdir(OUT_DIR):
-        path = os.path.join(OUT_DIR, f)
-        if os.path.isfile(path):
-            os.remove(path)
+    """Start a new figure directory; preserve all previous figures."""
+    global OUT_DIR
+    from datetime import datetime, timezone
+    from pathlib import Path
+    import uuid
+    directory = Path("figures") / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_" + uuid.uuid4().hex[:8])
+    directory.mkdir(parents=True, exist_ok=False)
+    OUT_DIR = str(directory) + "/"
 
 
 def make_pivot(df, value_col):
@@ -205,4 +206,5 @@ def main():
     draw_recovery_b_vs_fx_cost(df, fixed_tau=0.5, fixed_beta=0.4)
 
 
-main()
+if __name__ == "__main__":
+    main()

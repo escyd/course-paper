@@ -1,4 +1,5 @@
 from AgentBasedModel.utils import Order, OrderList
+from AgentBasedModel.utils.orders import EmptyOrderBookError
 from AgentBasedModel.utils.math import exp, mean
 import random
 
@@ -27,7 +28,10 @@ class ExchangeAgent:
         self.dividend_book = list()  # list of future dividends
         self.risk_free = rf
         self.transaction_cost = transaction_cost
+        self.last_midpoint = None
+        self.fallback_calls = 0
         self._fill_book(price, std, volume, rf * price)
+        self._remember_midpoint()
 
     def generate_dividend(self):
         """
@@ -87,11 +91,20 @@ class ExchangeAgent:
             return {'bid': self.order_book['bid'].first.qty, 'ask': self.order_book['ask'].first.qty}
         return None
 
-    def price(self) -> float or None:
+    def _remember_midpoint(self):
         spread = self.spread()
-        if spread:
-            return round((spread['bid'] + spread['ask']) / 2, 1)
-        raise Exception(f'Price cannot be determined, since no orders either bid or ask')
+        if spread is not None:
+            self.last_midpoint = round((spread['bid'] + spread['ask']) / 2, 1)
+
+    def price(self) -> float:
+        self._remember_midpoint()
+        bid, ask = bool(self.order_book['bid']), bool(self.order_book['ask'])
+        if bid and ask:
+            return self.last_midpoint
+        if self.last_midpoint is not None:
+            self.fallback_calls += 1
+            return self.last_midpoint
+        raise EmptyOrderBookError('No previous valid two-sided midpoint; fallback undefined')
 
     def dividend(self, access: int = None) -> list or float:
         """
@@ -112,7 +125,11 @@ class ExchangeAgent:
 
         :return: void
         """
-        bid, ask = self.spread().values()
+        spread = self.spread()
+        if spread is None:
+            return
+        self._remember_midpoint()
+        bid, ask = spread.values()
         t_cost = self.transaction_cost
         if not bid or not ask:
             return
@@ -122,6 +139,7 @@ class ExchangeAgent:
                 order = self.order_book['ask'].fulfill(order, t_cost)
             if order.qty > 0:
                 self.order_book['bid'].insert(order)
+            self._remember_midpoint()
             return
 
         elif order.order_type == 'ask':
@@ -129,6 +147,7 @@ class ExchangeAgent:
                 order = self.order_book['bid'].fulfill(order, t_cost)
             if order.qty > 0:
                 self.order_book['ask'].insert(order)
+        self._remember_midpoint()
 
     def market_order(self, order: Order) -> Order:
         """
@@ -136,11 +155,13 @@ class ExchangeAgent:
 
         :return: Order
         """
+        self._remember_midpoint()
         t_cost = self.transaction_cost
         if order.order_type == 'bid':
             order = self.order_book['ask'].fulfill(order, t_cost)
         elif order.order_type == 'ask':
             order = self.order_book['bid'].fulfill(order, t_cost)
+        self._remember_midpoint()
         return order
 
     def cancel_order(self, order: Order):
@@ -149,10 +170,12 @@ class ExchangeAgent:
 
         :return: void
         """
+        self._remember_midpoint()
         if order.order_type == 'bid':
             self.order_book['bid'].remove(order)
         elif order.order_type == 'ask':
             self.order_book['ask'].remove(order)
+        self._remember_midpoint()
 
 
 class Trader:
@@ -185,11 +208,15 @@ class Trader:
         return self.cash + self.assets * price
 
     def _buy_limit(self, quantity, price):
+        if self.market.spread() is None:
+            return
         order = Order(round(price, 1), round(quantity), 'bid', self)
         self.orders.append(order)
         self.market.limit_order(order)
 
     def _sell_limit(self, quantity, price):
+        if self.market.spread() is None:
+            return
         order = Order(round(price, 1), round(quantity), 'ask', self)
         self.orders.append(order)
         self.market.limit_order(order)
@@ -410,7 +437,7 @@ class Chartist(Trader):
             if random_state > .85:
                 self._buy_market(Random.draw_quantity())
             # Limit order
-            elif random_state > .5:
+            elif random_state > .5 and spread is not None:
                 self._buy_limit(Random.draw_quantity(), Random.draw_price('bid', spread) * (1 - t_cost))
             # Cancel order
             elif random_state < .35:
@@ -421,7 +448,7 @@ class Chartist(Trader):
             if random_state > .85:
                 self._sell_market(Random.draw_quantity())
             # Limit order
-            elif random_state > .5:
+            elif random_state > .5 and spread is not None:
                 self._sell_limit(Random.draw_quantity(), Random.draw_price('ask', spread) * (1 + t_cost))
             # Cancel order
             elif random_state < .35:
@@ -568,10 +595,14 @@ class MarketMaker(Trader):
         # If in panic state we only either sell or buy commodities
         if not bid_volume or not ask_volume:
             self.panic = True
-            self._buy_market((self.ul + self.ll) / 2 - self.assets) if ask_volume is None else None
-            self._sell_market(self.assets - (self.ul + self.ll) / 2) if bid_volume is None else None
+            if ask_volume == 0:
+                self._buy_market((self.ul + self.ll) / 2 - self.assets)
+            if bid_volume == 0:
+                self._sell_market(self.assets - (self.ul + self.ll) / 2)
         else:
             self.panic = False
+            if spread is None:
+                return  # No executable two-sided quote; do not invent liquidity.
             base_offset = -((spread['ask'] - spread['bid']) * (self.assets / self.softlimit))  # Price offset
             self._buy_limit(bid_volume, spread['bid'] - base_offset - .1)  # BID
             self._sell_limit(ask_volume, spread['ask'] + base_offset + .1)  # ASK

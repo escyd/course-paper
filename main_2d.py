@@ -98,7 +98,7 @@ def run_and_plot(tau=0.0, beta=0.0, steps=500):
     plt.show()
 
     plt.figure(figsize=(10, 5))
-    plt.plot(simulator.info.price_gap, label="|P_A - FX*P_B|")
+    plt.plot(simulator.info.price_gap, label="|P_A - P_B/FX|")
     plt.axvline(200, linestyle="--")
     plt.title(f"Price gap, tau={tau}, beta={beta}")
     plt.legend()

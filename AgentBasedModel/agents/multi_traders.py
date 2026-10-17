@@ -1,4 +1,5 @@
 import random
+import math
 from types import SimpleNamespace
 
 from AgentBasedModel.utils import Order
@@ -45,6 +46,16 @@ class MultiTrader:
             orders=[]
         )
 
+    def execute_market_order(self, market, price, qty, side):
+        """Matching updates the proxy with actual fills and both-side fees."""
+        currency = market.base_currency
+        proxy = self.make_order_proxy(currency)
+        order = Order(price, qty, side, proxy)
+        market.market_order(order)
+        self.cash[currency] = proxy.cash
+        self.assets = proxy.assets
+        return order
+
     def available_markets(self):
         if self.access_mode == "A_ONLY":
             return ["A"]
@@ -69,14 +80,7 @@ class MultiTrader:
         ask = spread["ask"] * (1 + market.transaction_cost)
         total = ask + self.distance_cost(market_name, tau)
 
-        if market.base_currency != self.home_currency and self.fx_market is not None:
-            fx_rate = self.fx_market.price()
-            if market.base_currency == "CUR_B" and self.home_currency == "CUR_A":
-                total *= fx_rate
-            elif market.base_currency == "CUR_A" and self.home_currency == "CUR_B":
-                total /= max(fx_rate, 1e-9)
-
-        return total
+        return self._home_currency_value(total, market, buying=True)
 
     def effective_sell_price(self, market_name: str, tau: float) -> float:
         market = self.markets[market_name]
@@ -87,14 +91,16 @@ class MultiTrader:
         bid = spread["bid"] * (1 - market.transaction_cost)
         total = bid - self.distance_cost(market_name, tau)
 
-        if market.base_currency != self.home_currency and self.fx_market is not None:
-            fx_rate = self.fx_market.price()
-            if market.base_currency == "CUR_B" and self.home_currency == "CUR_A":
-                total *= fx_rate
-            elif market.base_currency == "CUR_A" and self.home_currency == "CUR_B":
-                total /= max(fx_rate, 1e-9)
+        return self._home_currency_value(total, market, buying=False)
 
-        return total
+    def _home_currency_value(self, total, market, *, buying):
+        if market.base_currency == self.home_currency or self.fx_market is None:
+            return total
+        if buying:
+            # Home funds required to receive the local purchase amount, net of FX fee.
+            received_per_home_unit = self.fx_market.convert(1., self.home_currency, market.base_currency)
+            return total / received_per_home_unit
+        return self.fx_market.convert(total, market.base_currency, self.home_currency)
 
     def choose_best_market_to_buy(self, tau: float):
         candidates = self.available_markets()
@@ -115,31 +121,21 @@ class MultiTrader:
     def ensure_currency(self, currency: str, amount_needed: float):
         if self.cash[currency] >= amount_needed:
             return True
-
         if self.fx_market is None:
             return False
-
-        if currency == "CUR_B" and self.cash["CUR_A"] > 0:
-            need = amount_needed - self.cash["CUR_B"]
-            rate = self.fx_market.price()
-            amount_a = need / max(rate, 1e-9)
-            amount_a = min(amount_a, self.cash["CUR_A"])
-            converted = self.fx_market.convert(amount_a, "CUR_A", "CUR_B")
-            self.cash["CUR_A"] -= amount_a
-            self.cash["CUR_B"] += converted
-            return self.cash["CUR_B"] >= amount_needed
-
-        if currency == "CUR_A" and self.cash["CUR_B"] > 0:
-            need = amount_needed - self.cash["CUR_A"]
-            rate = self.fx_market.price()
-            amount_b = need * rate
-            amount_b = min(amount_b, self.cash["CUR_B"])
-            converted = self.fx_market.convert(amount_b, "CUR_B", "CUR_A")
-            self.cash["CUR_B"] -= amount_b
-            self.cash["CUR_A"] += converted
-            return self.cash["CUR_A"] >= amount_needed
-
-        return False
+        source = "CUR_A" if currency == "CUR_B" else "CUR_B"
+        if self.cash[source] <= 0:
+            return False
+        received_per_unit = self.fx_market.convert(1., source, currency)
+        if received_per_unit <= 0:
+            return False
+        needed = amount_needed - self.cash[currency]
+        amount = min(needed / received_per_unit, self.cash[source])
+        converted = self.fx_market.convert(amount, source, currency)
+        self.cash[source] -= amount
+        self.cash[currency] += converted
+        return self.cash[currency] >= amount_needed or math.isclose(
+            self.cash[currency], amount_needed, rel_tol=1e-12, abs_tol=1e-12)
 
 
 class RandomMultiTrader(MultiTrader):
@@ -163,17 +159,12 @@ class RandomMultiTrader(MultiTrader):
 
             ask = spread["ask"]
             currency = market.base_currency
-            total_cost = ask * qty
+            total_cost = ask * qty * (1 + market.transaction_cost)
 
             if not self.ensure_currency(currency, total_cost):
                 return
 
-            proxy = self.make_order_proxy(currency)
-            order = Order(ask, qty, "bid", proxy)
-            market.market_order(order)
-
-            self.cash[currency] -= total_cost
-            self.assets += qty
+            self.execute_market_order(market, ask, qty, "bid")
 
         else:
             if self.assets < qty:
@@ -191,12 +182,7 @@ class RandomMultiTrader(MultiTrader):
             bid = spread["bid"]
             currency = market.base_currency
 
-            proxy = self.make_order_proxy(currency)
-            order = Order(bid, qty, "ask", proxy)
-            market.market_order(order)
-
-            self.assets -= qty
-            self.cash[currency] += bid * qty
+            self.execute_market_order(market, bid, qty, "ask")
 
 
 class FundamentalistMultiTrader(MultiTrader):
@@ -225,17 +211,12 @@ class FundamentalistMultiTrader(MultiTrader):
 
             ask = spread["ask"]
             currency = market.base_currency
-            total_cost = ask * qty
+            total_cost = ask * qty * (1 + market.transaction_cost)
 
             if not self.ensure_currency(currency, total_cost):
                 return
 
-            proxy = self.make_order_proxy(currency)
-            order = Order(ask, qty, "bid", proxy)
-            market.market_order(order)
-
-            self.cash[currency] -= total_cost
-            self.assets += qty
+            self.execute_market_order(market, ask, qty, "bid")
 
         elif self.fundamental_price < sell_effective and self.assets >= qty:
             market = self.markets[sell_market]
@@ -246,12 +227,7 @@ class FundamentalistMultiTrader(MultiTrader):
             bid = spread["bid"]
             currency = market.base_currency
 
-            proxy = self.make_order_proxy(currency)
-            order = Order(bid, qty, "ask", proxy)
-            market.market_order(order)
-
-            self.assets -= qty
-            self.cash[currency] += bid * qty
+            self.execute_market_order(market, bid, qty, "ask")
 
 
 class FXTrader(MultiTrader):

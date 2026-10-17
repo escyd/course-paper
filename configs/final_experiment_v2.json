@@ -1,0 +1,17 @@
+{
+  "model_version": "paper-revision-v2",
+  "methodology_version": "v2-methodology-1",
+  "branch": "paper-revision",
+  "tau_values": [0.0, 0.1, 0.3, 0.5, 1.0],
+  "beta_values": [0.0, 0.2, 0.4, 0.6],
+  "fx_cost_values": [0.0, 0.001, 0.003, 0.005, 0.01],
+  "expected_scenarios": 100,
+  "n_seeds": 500,
+  "base_seed": 42,
+  "steps": 500,
+  "shock_iteration": 200,
+  "workers": 4,
+  "save_full_timeseries": true,
+  "bootstrap_reps": 1999,
+  "output_root": "tables/final_experiments_v2"
+}

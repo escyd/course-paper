@@ -1,5 +1,6 @@
 from AgentBasedModel.agents import ExchangeAgent, Universalist, Chartist, Fundamentalist
 from AgentBasedModel.utils.math import mean, std, difference, rolling
+from AgentBasedModel.utils.liquidity import quote_state
 import random
 from tqdm import tqdm
 
@@ -62,6 +63,12 @@ class SimulatorInfo:
         # Market Statistics
         self.prices = list()  # price at the end of iteration
         self.spreads = list()  # bid-ask spreads
+        self.bid_empty = []
+        self.ask_empty = []
+        self.empty_books = []
+        self.fallback_used = []
+        self.empty_both = []
+        self.liquidity_state = []
         self.dividends = list()  # dividend paid at each iteration
         self.orders = list()  # order book statistics
 
@@ -77,6 +84,12 @@ class SimulatorInfo:
         # Market Statistics
         self.prices = list()  # price at the end of iteration
         self.spreads = list()  # bid-ask spreads
+        self.bid_empty = []
+        self.ask_empty = []
+        self.empty_books = []
+        self.fallback_used = []
+        self.empty_both = []
+        self.liquidity_state = []
         self.spread_sizes = list()  # bid-ask spread sizes
         self.dividends = list()
         self.orders_quantities = list()  # list -> (bid, ask)
@@ -111,7 +124,14 @@ class SimulatorInfo:
         - :class:`list[dict]` **types** --> each agent's type on each iteration
         """
         # Market Statistics
+        state = quote_state(self.exchange)
         self.prices.append(self.exchange.price())
+        self.empty_both.append(state['empty_both'])
+        self.liquidity_state.append(state['state'])
+        self.bid_empty.append(state['bid_empty'])
+        self.ask_empty.append(state['ask_empty'])
+        self.empty_books.append(not state['two_sided'])
+        self.fallback_used.append(not state['two_sided'])
         self.spreads.append((self.exchange.spread()))
         self.dividends.append(self.exchange.dividend())
         self.orders.append({

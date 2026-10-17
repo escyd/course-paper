@@ -1,0 +1,22 @@
+[
+  {
+    "scenario_id": "S049",
+    "seed": 42,
+    "tau": 0.3,
+    "beta": 0.2,
+    "fx_cost": 0.003,
+    "pre_shock_two_sided": false,
+    "rule": "minimum seed in each pre-shock state of design-central scenario; not selected by trajectory appearance",
+    "timeseries_sha256": "0a19587543dee77a35ea3b140f500ae77fb86406644f0e59ecc7a6ce55de6c0d"
+  },
+  {
+    "scenario_id": "S049",
+    "seed": 49,
+    "tau": 0.3,
+    "beta": 0.2,
+    "fx_cost": 0.003,
+    "pre_shock_two_sided": true,
+    "rule": "minimum seed in each pre-shock state of design-central scenario; not selected by trajectory appearance",
+    "timeseries_sha256": "44d736a89e9faff897a7b6990b1d4658c9eabdb774f7f8862ef99da065be2e56"
+  }
+]
